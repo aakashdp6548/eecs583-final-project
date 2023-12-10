@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <omp.h>
 
-#define N 200000000
+#define N 400000000
 
 int main()
 {

@@ -16,8 +16,12 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 
 #include <iostream>
 #include <vector>
@@ -68,15 +72,16 @@ namespace {
             // DominatorTree *DT = &AM.getResult<DominatorTreeAnalysis>(F);
             ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
             // AssumptionCache *AC = &AM.getResult<AssumptionAnalysis>(F);
+            TargetTransformInfo &TTI = FAM.getResult<TargetIRAnalysis>(F);
 
             for (Loop *L : LI) {
                 
-                // llvm::errs() << "Running on loop " << L << "\n";
+                llvm::errs() << "Running on loop " << L << "\n";
                 // also need to iterate over Loop *LL : depth_first(L) to get nested loops
 
                 // step 1: identify prefetches
                 if (!L->isInnermost()) {
-                    // llvm::errs() << "Not innermost loop - skipping\n";
+                    llvm::errs() << "Not innermost loop - skipping\n";
                     continue;
                 }
 
@@ -93,33 +98,51 @@ namespace {
                         Instruction *MemI = LMemI;
                         Value *PtrValue = LMemI->getPointerOperand();
 
-                        // unsigned PtrAddrSpace = PtrValue->getType()->getPointerAddressSpace();
-                        // if (!TTI->shouldPrefetchAddressSpace(PtrAddrSpace)) {
-                        //     continue;
-                        // }
+                        unsigned PtrAddrSpace = PtrValue->getType()->getPointerAddressSpace();
+                        if (!TTI.shouldPrefetchAddressSpace(PtrAddrSpace)) {
+                            llvm::errs() << "Decided not to prefetch " << MemI << " with pointer operand " << PtrValue << "\n";
+                            continue;
+                        }
                         // if (L->isLoopInvariant(PtrValue)) {
                         //     continue;
                         // }
 
-                        const SCEV *LSCEV = SE.getSCEV(PtrValue);
+                        // const SCEV *LSCEV = SE.getSCEV(PtrValue);
 
-                        llvm::errs() << *LSCEV << "\n";
+                        // llvm::errs() << *LSCEV << "\n";
 
-                        const SCEVAddExpr *LSCEVAddExpr = dyn_cast<SCEVAddExpr>(LSCEV);
-                        if (!LSCEVAddExpr) {
-                            llvm::errs() << " :( \n";
-                            continue;
-                        }
+                        // const SCEVAddExpr *LSCEVAddExpr = dyn_cast<SCEVAddExpr>(LSCEV);
+                        // if (!LSCEVAddExpr) {
+                        //     llvm::errs() << " :( \n";
+                        //     continue;
+                        // }
 
-                        const SCEVAddRecExpr *LSCEVAddRec = dyn_cast<SCEVAddRecExpr>(LSCEVAddExpr->getOperand(0));//
-                        if (!LSCEVAddRec) {
-                            llvm::errs() << " :( \n";
-                            continue;
-                        }
-                        llvm::errs() << *LSCEVAddRec << "\n";
+                        // const SCEVAddRecExpr *LSCEVAddRec = dyn_cast<SCEVAddRecExpr>(LSCEVAddExpr->getOperand(0));//
+                        // if (!LSCEVAddRec) {
+                        //     llvm::errs() << " :( \n";
+                        //     continue;
+                        // }
+                        // llvm::errs() << *LSCEVAddRec << "\n";
 
-                        Prefetches.push_back(Prefetch(LSCEVAddRec, MemI));
-                        llvm::errs() << "Prefetch at instruction " << MemI << " possible\n";
+                        // Prefetches.push_back(Prefetch(LSCEVAddRec, MemI));
+
+                        // unsigned PtrAddrSpace = NextLSCEV->getType()->getPointerAddressSpace();
+                        // Type *I8Ptr = PointerType::get(BB->getContext(), PtrAddrSpace);
+                        // Value *PrefPtrValue = SCEVE.expandCodeFor(NextLSCEV, I8Ptr, P.InsertPt);
+                    
+                        IRBuilder<> Builder(MemI);
+                        Module *M = BB->getParent()->getParent();
+                        Type *I32 = Type::getInt32Ty(BB->getContext());
+
+                        Function *PrefetchFunc = Intrinsic::getDeclaration(
+                            M, Intrinsic::prefetch, PtrValue->getType());
+                        Builder.CreateCall(
+                            PrefetchFunc,
+                            {PtrValue,  // pointer value + num_iters_ahead * memsize
+                            ConstantInt::get(I32, 0),
+                            ConstantInt::get(I32, 3), ConstantInt::get(I32, 1)});
+
+                        llvm::errs() << "Prefetched " << MemI << "\n";
                     }
                 }
                 // step 2: prefetch prefetches

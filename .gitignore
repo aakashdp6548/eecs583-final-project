@@ -1,0 +1,9 @@
+*.ll
+
+.vscode
+*.dot
+
+*/build
+
+main_unoptimized
+main_optimized

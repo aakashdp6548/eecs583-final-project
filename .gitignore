@@ -7,3 +7,9 @@
 
 main
 main_prefetch
+
+nested_loop
+nested_loop_prefetch
+
+saxpy
+saxpy_prefetch

@@ -25,7 +25,6 @@ int main()
   }
 
   // add two vectors
-  // prefetch()
   #pragma omp target teams distribute parallel for
   for (int i=0; i<N; i++){
     c[i] = a[i] + b[i];

@@ -5,5 +5,5 @@
 
 */build
 
-main_unoptimized
-main_optimized
+main
+main_prefetch

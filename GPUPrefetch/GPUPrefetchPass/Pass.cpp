@@ -57,11 +57,11 @@ namespace {
             llvm::LoopAnalysis::Result &LI = FAM.getResult<LoopAnalysis>(F);
             llvm::ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
 
+            llvm::errs() << "  STEP 1: Identifying Prefetches\n";
             std::vector<Value*> prefetched_addr;
             std::vector<Prefetch> prefetches;
             // LoopAnalysis only returns top-level loops, use DFS to get all inner loops (if any)
             for (Loop *L : LI) {
-
                 for (const auto BB : L->blocks()) {
                     for (auto &I : *BB) {
                         // only prefetch load instructions
@@ -69,7 +69,7 @@ namespace {
                         if (!loadInst) {
                             continue;
                         }
-                        llvm::errs() << "At instruction " << *loadInst << "\n";
+                        llvm::errs() << "    Instruction " << *loadInst << "\n";
 
                         // Determine if memory address to load is recurrence on induction variable
                         Value *ptrOperand = loadInst->getPointerOperand();
@@ -78,7 +78,7 @@ namespace {
                         if (!indVarRec) {
                             continue;
                         }
-                        llvm::errs() << "   SCEVAddRecExpr: " << *indVarRec << "\n";
+                        llvm::errs() << "    SCEVAddRecExpr: " << *indVarRec << "\n";
 
                         // Compute address of memory location to prefetch after NumPrefetchIters iterations
                         // const SCEV *nextSCEV = SE.getAddExpr(indVarRec, indVarRec->getStepRecurrence(SE));
@@ -95,12 +95,10 @@ namespace {
                         Type *ptrType = ptrOperand->getType();
                         Value *prefetchInst = expander.expandCodeFor(nextSCEV, ptrType, &I);
 
-                        llvm::errs() << "   Looking at address " << prefetchInst << "\n";
-
                         // Duplicate checking
                         auto it = std::find(prefetched_addr.begin(), prefetched_addr.end(), prefetchInst);
                         if (it != prefetched_addr.end()) {
-                            llvm::errs() << "   " << prefetchInst << " was already prefetched\n";
+                            llvm::errs() << "    " << prefetchInst << " was already prefetched\n";
                             continue;
                         }
                         prefetched_addr.push_back(prefetchInst);
@@ -109,18 +107,21 @@ namespace {
                         Module *mod = BB->getParent()->getParent();
                         Function *func = Intrinsic::getDeclaration(mod, Intrinsic::prefetch, ptrType);
                         prefetches.push_back(Prefetch(func, prefetchInst, loadInst));
+
+                        llvm::errs() << "    Address " << prefetchInst << " saved to prefetch\n";
                     }
                 }
             }
             
             // Insert all the prefetches in the appropriate locations
+            llvm::errs() << "  STEP 2: Inserting Prefetch Instructions\n";
             for (Prefetch &p : prefetches) {
                 Function *prefetch_func = p.prefetch_func;
                 Value *prefetchInst = p.prefetch_ptr;
                 Instruction *inst = p.inst;
 
                 IRBuilder<> builder(inst);
-                llvm::errs() << "Prefetching " << *prefetchInst << "\n";
+                llvm::errs() << "    Prefetching " << *prefetchInst << "\n";
 
                 Type *int32Type = Type::getInt32Ty(inst->getParent()->getContext());
                 ArrayRef<Value*> args = {
